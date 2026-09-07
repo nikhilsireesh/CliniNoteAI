@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-white text-ink-800 dark:bg-ink-950 dark:text-ink-100;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer utilities {
+  .font-serif-clinical {
+    font-family: 'Source Serif 4', Georgia, serif;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-200 dark:bg-ink-700;
+  }
+  .shimmer-bg {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    background-size: 200% 100%;
+  }
+  .mask-fade-bottom {
+    mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  }
+  .gradient-text {
+    @apply bg-gradient-to-r from-brand-500 via-brand-400 to-mint-400 bg-clip-text text-transparent;
+    background-size: 200% auto;
+  }
+  .bg-grid-pattern {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .hover-lift {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-3px);
+  }
+}
+
+/* Print layout for the exportable clinical note */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-note,
+  #printable-note * {
+    visibility: visible;
+  }
+  #printable-note {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+  }
+}
