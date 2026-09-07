@@ -4,7 +4,6 @@ import {
   FileStack,
   LayoutGrid,
   LogOut,
-  Mic,
   Settings as SettingsIcon,
   ShieldCheck,
   Users,
@@ -16,7 +15,6 @@ import { cn, initials } from '../lib/utils'
 
 const NAV_ITEMS = [
   { to: '/app', label: 'Dashboard', icon: LayoutGrid, end: true },
-  { to: '/app/new-note', label: 'New Note', icon: Mic },
   { to: '/app/notes', label: 'Recent Notes', icon: FileStack },
   { to: '/app/patients', label: 'Patients', icon: Users },
   { to: '/app/templates', label: 'Templates', icon: FileText },

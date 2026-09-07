@@ -1,5 +1,5 @@
 import type { NoteListItem } from '../types/clinical'
-import { demoEncounters } from './demoEncounters'
+import { demoEncounters } from './demoEncounters.js'
 
 const fromEncounters: NoteListItem[] = demoEncounters.map((e) => ({
   id: e.note.id,

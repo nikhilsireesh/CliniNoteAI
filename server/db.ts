@@ -1,55 +1,62 @@
-// Real, persistent SQLite database for CliniNote — using Node's built-in `node:sqlite`
-// module (no native addon to compile, no external service). The file lives at
-// server/app.db and survives restarts; delete it (or run `npm run db:reset`) to
-// re-seed from the same fictional demo data the frontend used to hardcode.
-import { DatabaseSync } from 'node:sqlite'
+// CliniNote's database — libSQL (via @libsql/client), which speaks the same SQL as SQLite.
+// Locally this defaults to a plain file (server/app.db) so `npm run dev` needs zero setup.
+// In production (Vercel), set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN to a real hosted Turso
+// database — same code, same schema, same queries, just a network client instead of a file,
+// which is what actually makes the data persist across serverless invocations.
+import { createClient, type Client } from '@libsql/client'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import type { ClinicalNote, NoteListItem, PatientRecord } from '../src/types/clinical.ts'
-import { demoPatients } from '../src/data/demoPatients.ts'
-import { demoNotes } from '../src/data/demoNotes.ts'
-import { demoEncounters } from '../src/data/demoEncounters.ts'
+import type { ClinicalNote, NoteListItem, PatientRecord } from '../src/types/clinical.js'
+import { demoPatients } from '../src/data/demoPatients.js'
+import { demoNotes } from '../src/data/demoNotes.js'
+import { demoEncounters } from '../src/data/demoEncounters.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DB_PATH = path.join(__dirname, 'app.db')
+const LOCAL_DB_PATH = path.join(__dirname, 'app.db')
 
-export const db = new DatabaseSync(DB_PATH)
+export const db: Client = createClient({
+  url: process.env.TURSO_DATABASE_URL || `file:${LOCAL_DB_PATH}`,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+})
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS patients (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    age INTEGER NOT NULL,
-    sex TEXT NOT NULL,
-    mrn TEXT NOT NULL,
-    last_visit TEXT NOT NULL,
-    note_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL,
-    avatar_color TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS notes (
-    id TEXT PRIMARY KEY,
-    patient_id TEXT,
-    patient_name TEXT NOT NULL,
-    patient_age INTEGER NOT NULL,
-    patient_sex TEXT NOT NULL,
-    encounter_type TEXT NOT NULL,
-    date TEXT NOT NULL,
-    status TEXT NOT NULL,
-    transcript TEXT NOT NULL DEFAULT '',
-    subjective TEXT NOT NULL,
-    objective TEXT NOT NULL,
-    assessment TEXT NOT NULL,
-    plan TEXT NOT NULL,
-    documentation TEXT NOT NULL,
-    ai_processing_seconds INTEGER NOT NULL DEFAULT 0,
-    estimated_manual_minutes INTEGER NOT NULL DEFAULT 0,
-    estimated_ai_minutes INTEGER NOT NULL DEFAULT 0,
-    last_modified TEXT NOT NULL,
-    signed_at TEXT
-  );
-`)
+async function migrate() {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS patients (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      age INTEGER NOT NULL,
+      sex TEXT NOT NULL,
+      mrn TEXT NOT NULL,
+      last_visit TEXT NOT NULL,
+      note_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      avatar_color TEXT NOT NULL
+    )
+  `)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id TEXT PRIMARY KEY,
+      patient_id TEXT,
+      patient_name TEXT NOT NULL,
+      patient_age INTEGER NOT NULL,
+      patient_sex TEXT NOT NULL,
+      encounter_type TEXT NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL,
+      transcript TEXT NOT NULL DEFAULT '',
+      subjective TEXT NOT NULL,
+      objective TEXT NOT NULL,
+      assessment TEXT NOT NULL,
+      plan TEXT NOT NULL,
+      documentation TEXT NOT NULL,
+      ai_processing_seconds INTEGER NOT NULL DEFAULT 0,
+      estimated_manual_minutes INTEGER NOT NULL DEFAULT 0,
+      estimated_ai_minutes INTEGER NOT NULL DEFAULT 0,
+      last_modified TEXT NOT NULL,
+      signed_at TEXT
+    )
+  `)
+}
 
 // --- Row <-> domain-type mapping -------------------------------------------------
 
@@ -139,7 +146,7 @@ function noteToListItem(row: NoteRow): NoteListItem {
   }
 }
 
-// --- Seed: only runs once, when the tables are empty ------------------------------
+// --- Seed: INSERT OR IGNORE, so it's safe to call on every cold start ------------
 
 const EMPTY_SECTION = { notDocumented: true, confidence: 'review' as const, value: 'Not documented' }
 
@@ -177,42 +184,37 @@ function placeholderNoteBody(item: NoteListItem) {
   }
 }
 
-function seed() {
-  const patientCount = db.prepare('SELECT COUNT(*) AS n FROM patients').get() as { n: number }
-  if (patientCount.n === 0) {
-    const insertPatient = db.prepare(
-      `INSERT INTO patients (id, name, age, sex, mrn, last_visit, note_count, status, avatar_color)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    for (const p of demoPatients) {
-      insertPatient.run(p.id, p.name, p.age, p.sex, p.mrn, p.lastVisit, p.noteCount, p.status, p.avatarColor)
-    }
+async function seed() {
+  for (const p of demoPatients) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO patients (id, name, age, sex, mrn, last_visit, note_count, status, avatar_color)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [p.id, p.name, p.age, p.sex, p.mrn, p.lastVisit, p.noteCount, p.status, p.avatarColor],
+    })
   }
 
-  const noteCount = db.prepare('SELECT COUNT(*) AS n FROM notes').get() as { n: number }
-  if (noteCount.n === 0) {
-    const fullNotesById = new Map(demoEncounters.map((e) => [e.note.id, e]))
-    const insertNote = db.prepare(
-      `INSERT INTO notes (
+  const fullNotesById = new Map(demoEncounters.map((e) => [e.note.id, e]))
+  for (const item of demoNotes) {
+    const full = fullNotesById.get(item.id)
+    const body = full
+      ? {
+          transcript: full.note.transcript,
+          subjective: JSON.stringify(full.note.subjective),
+          objective: JSON.stringify(full.note.objective),
+          assessment: JSON.stringify(full.note.assessment),
+          plan: JSON.stringify(full.note.plan),
+          documentation: JSON.stringify(full.note.documentation),
+        }
+      : placeholderNoteBody(item)
+    const patient = full?.patient
+
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO notes (
         id, patient_id, patient_name, patient_age, patient_sex, encounter_type, date, status,
         transcript, subjective, objective, assessment, plan, documentation,
         ai_processing_seconds, estimated_manual_minutes, estimated_ai_minutes, last_modified, signed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    for (const item of demoNotes) {
-      const full = fullNotesById.get(item.id)
-      const body = full
-        ? {
-            transcript: full.note.transcript,
-            subjective: JSON.stringify(full.note.subjective),
-            objective: JSON.stringify(full.note.objective),
-            assessment: JSON.stringify(full.note.assessment),
-            plan: JSON.stringify(full.note.plan),
-            documentation: JSON.stringify(full.note.documentation),
-          }
-        : placeholderNoteBody(item)
-      const patient = full?.patient
-      insertNote.run(
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
         item.id,
         item.patientId ?? patient?.id ?? null,
         item.patientName,
@@ -231,52 +233,106 @@ function seed() {
         full?.note.estimatedManualMinutes ?? 10,
         full?.note.estimatedAiMinutes ?? 2,
         item.lastModified,
-        full?.note.signedAt ?? null
-      )
-    }
+        full?.note.signedAt ?? null,
+      ],
+    })
   }
 }
 
-seed()
+// Runs once per cold start (module scope, so it's shared across requests on a warm
+// serverless instance); INSERT OR IGNORE makes it safe even if two cold starts race.
+let ready: Promise<void> | undefined
+export function ensureReady(): Promise<void> {
+  if (!ready) {
+    ready = migrate().then(seed)
+  }
+  return ready
+}
 
 // --- Public query API --------------------------------------------------------------
 
-export function getAllPatients(): PatientRecord[] {
-  const rows = db.prepare('SELECT * FROM patients ORDER BY last_visit DESC').all() as unknown as PatientRow[]
-  return rows.map(patientFromRow)
+export async function getAllPatients(): Promise<PatientRecord[]> {
+  const { rows } = await db.execute('SELECT * FROM patients ORDER BY last_visit DESC')
+  return (rows as unknown as PatientRow[]).map(patientFromRow)
 }
 
-export function getPatientById(id: string): PatientRecord | undefined {
-  const row = db.prepare('SELECT * FROM patients WHERE id = ?').get(id) as PatientRow | undefined
+export async function getPatientById(id: string): Promise<PatientRecord | undefined> {
+  const { rows } = await db.execute({ sql: 'SELECT * FROM patients WHERE id = ?', args: [id] })
+  const row = rows[0] as unknown as PatientRow | undefined
   return row ? patientFromRow(row) : undefined
 }
 
-export function getNoteList(): NoteListItem[] {
-  const rows = db.prepare('SELECT * FROM notes ORDER BY last_modified DESC').all() as unknown as NoteRow[]
-  return rows.map(noteToListItem)
+const AVATAR_COLORS = [
+  'bg-brand-100 text-brand-700',
+  'bg-mint-100 text-mint-600',
+  'bg-amber-100 text-amber-600',
+]
+
+export interface NewPatientInput {
+  name: string
+  age: number
+  sex: PatientRecord['sex']
+  mrn: string
+  status: PatientRecord['status']
 }
 
-export function getNotesForPatient(patientId: string): NoteListItem[] {
-  const rows = db
-    .prepare('SELECT * FROM notes WHERE patient_id = ? ORDER BY last_modified DESC')
-    .all(patientId) as unknown as NoteRow[]
-  return rows.map(noteToListItem)
+export async function createPatient(input: NewPatientInput): Promise<PatientRecord> {
+  const slug = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+  const patient: PatientRecord = {
+    id: `pat-${slug || 'patient'}-${Date.now()}`,
+    name: input.name.trim(),
+    age: input.age,
+    sex: input.sex,
+    mrn: input.mrn.trim(),
+    lastVisit: new Date().toISOString().slice(0, 10),
+    noteCount: 0,
+    status: input.status,
+    avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
+  }
+  await db.execute({
+    sql: `INSERT INTO patients (id, name, age, sex, mrn, last_visit, note_count, status, avatar_color)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      patient.id,
+      patient.name,
+      patient.age,
+      patient.sex,
+      patient.mrn,
+      patient.lastVisit,
+      patient.noteCount,
+      patient.status,
+      patient.avatarColor,
+    ],
+  })
+  return patient
 }
 
-export function getNoteById(id: string): ClinicalNote | undefined {
-  const row = db.prepare('SELECT * FROM notes WHERE id = ?').get(id) as NoteRow | undefined
+export async function getNoteList(): Promise<NoteListItem[]> {
+  const { rows } = await db.execute('SELECT * FROM notes ORDER BY last_modified DESC')
+  return (rows as unknown as NoteRow[]).map(noteToListItem)
+}
+
+export async function getNotesForPatient(patientId: string): Promise<NoteListItem[]> {
+  const { rows } = await db.execute({
+    sql: 'SELECT * FROM notes WHERE patient_id = ? ORDER BY last_modified DESC',
+    args: [patientId],
+  })
+  return (rows as unknown as NoteRow[]).map(noteToListItem)
+}
+
+export async function getNoteById(id: string): Promise<ClinicalNote | undefined> {
+  const { rows } = await db.execute({ sql: 'SELECT * FROM notes WHERE id = ?', args: [id] })
+  const row = rows[0] as unknown as NoteRow | undefined
   return row ? noteFromRow(row) : undefined
 }
 
-export function upsertNote(note: ClinicalNote): ClinicalNote {
-  db.prepare(
-    `INSERT INTO notes (
+export async function upsertNote(note: ClinicalNote): Promise<ClinicalNote> {
+  await db.execute({
+    sql: `INSERT INTO notes (
       id, patient_id, patient_name, patient_age, patient_sex, encounter_type, date, status,
       transcript, subjective, objective, assessment, plan, documentation,
       ai_processing_seconds, estimated_manual_minutes, estimated_ai_minutes, last_modified, signed_at
-    ) VALUES (@id, @patient_id, @patient_name, @patient_age, @patient_sex, @encounter_type, @date, @status,
-      @transcript, @subjective, @objective, @assessment, @plan, @documentation,
-      @ai_processing_seconds, @estimated_manual_minutes, @estimated_ai_minutes, @last_modified, @signed_at)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       patient_name = excluded.patient_name,
       patient_age = excluded.patient_age,
@@ -294,33 +350,34 @@ export function upsertNote(note: ClinicalNote): ClinicalNote {
       estimated_manual_minutes = excluded.estimated_manual_minutes,
       estimated_ai_minutes = excluded.estimated_ai_minutes,
       last_modified = excluded.last_modified,
-      signed_at = excluded.signed_at`
-  ).run({
-    id: note.id,
-    patient_id: null,
-    patient_name: note.patient.name,
-    patient_age: note.patient.age,
-    patient_sex: note.patient.sex,
-    encounter_type: note.patient.encounterType,
-    date: note.date,
-    status: note.status,
-    transcript: note.transcript,
-    subjective: JSON.stringify(note.subjective),
-    objective: JSON.stringify(note.objective),
-    assessment: JSON.stringify(note.assessment),
-    plan: JSON.stringify(note.plan),
-    documentation: JSON.stringify(note.documentation),
-    ai_processing_seconds: note.aiProcessingSeconds,
-    estimated_manual_minutes: note.estimatedManualMinutes,
-    estimated_ai_minutes: note.estimatedAiMinutes,
-    last_modified: note.lastModified,
-    signed_at: note.signedAt ?? null,
+      signed_at = excluded.signed_at`,
+    args: [
+      note.id,
+      null,
+      note.patient.name,
+      note.patient.age,
+      note.patient.sex,
+      note.patient.encounterType,
+      note.date,
+      note.status,
+      note.transcript,
+      JSON.stringify(note.subjective),
+      JSON.stringify(note.objective),
+      JSON.stringify(note.assessment),
+      JSON.stringify(note.plan),
+      JSON.stringify(note.documentation),
+      note.aiProcessingSeconds,
+      note.estimatedManualMinutes,
+      note.estimatedAiMinutes,
+      note.lastModified,
+      note.signedAt ?? null,
+    ],
   })
   return note
 }
 
-export function signNoteById(id: string): ClinicalNote | undefined {
-  const existing = getNoteById(id)
+export async function signNoteById(id: string): Promise<ClinicalNote | undefined> {
+  const existing = await getNoteById(id)
   if (!existing) return undefined
   const signed: ClinicalNote = {
     ...existing,
@@ -331,8 +388,8 @@ export function signNoteById(id: string): ClinicalNote | undefined {
   return upsertNote(signed)
 }
 
-export function getDashboardStats() {
-  const notes = getNoteList()
+export async function getDashboardStats() {
+  const notes = await getNoteList()
   const today = new Date().toISOString().slice(0, 10)
   const notesToday = notes.filter((n) => n.date === today).length
   const pendingReview = notes.filter((n) => n.status === 'needs_review' || n.status === 'ai_generated').length

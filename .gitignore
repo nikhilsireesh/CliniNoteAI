@@ -16,6 +16,16 @@ dist-ssr
 server/app.db
 server/app.db-journal
 
+# Vercel CLI project link + build output
+.vercel
+
+# Local Claude Code tool state
+.claude/
+
+# Local env vars (Turso credentials, etc.) — never commit real secrets
+.env
+.env.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -26,3 +36,4 @@ server/app.db-journal
 *.njsproj
 *.sln
 *.sw?
+.env*

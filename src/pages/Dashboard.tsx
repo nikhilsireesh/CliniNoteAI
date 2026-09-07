@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { CalendarClock, ClipboardList, Clock3, Gauge, Mic, Sparkles, ArrowRight } from 'lucide-react'
+import { CalendarClock, ClipboardList, Clock3, Gauge, Sparkles, ArrowRight, UserPlus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { StatCard } from '../components/StatCard'
 import { Card, CardContent } from '../components/ui/Card'
@@ -35,17 +35,9 @@ export function Dashboard() {
           </h1>
           <p className="mt-1 text-sm text-ink-500">Ready to document your next patient encounter?</p>
         </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="flex gap-2"
-        >
-          <Button variant="outline" onClick={() => navigate('/app/new-note?demo=1')}>
-            <Sparkles className="h-4 w-4" /> Try Demo Encounter
-          </Button>
-          <Button onClick={() => navigate('/app/new-note')} className="group">
-            <Mic className="h-4 w-4 transition-transform group-hover:scale-110" /> New Note
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+          <Button onClick={() => navigate('/app/new-patient')} className="group">
+            <UserPlus className="h-4 w-4 transition-transform group-hover:scale-110" /> New Patient
           </Button>
         </motion.div>
       </div>

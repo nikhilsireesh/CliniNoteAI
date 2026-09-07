@@ -1,7 +1,9 @@
-import { CheckCircle2, Copy, Mic, RotateCcw, Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
+import { CheckCircle2, Copy, Mic, RotateCcw, Sparkles, Trash2 } from 'lucide-react'
 import { Card } from './ui/Card'
 import { Textarea } from './ui/Input'
 import { useToast } from '../context/ToastContext'
+import { summarizeLive } from '../lib/liveSummary'
 import { cn } from '../lib/utils'
 
 interface TranscriptPanelProps {
@@ -15,6 +17,9 @@ interface TranscriptPanelProps {
 
 export function TranscriptPanel({ text, isLive, isComplete, onChange, onClear, onReRecord }: TranscriptPanelProps) {
   const { showToast } = useToast()
+  // Recomputed on every transcript update — cheap and local, so it can safely track
+  // speech as it comes in without waiting for the deliberate "Generate SOAP Note" step.
+  const liveSummary = useMemo(() => (isLive ? summarizeLive(text) : null), [isLive, text])
 
   return (
     <Card className="animate-fadeUp">
@@ -64,6 +69,28 @@ export function TranscriptPanel({ text, isLive, isComplete, onChange, onClear, o
           </div>
         )}
       </div>
+
+      {liveSummary && (
+        <div className="animate-fadeIn border-b border-ink-100 bg-brand-50/40 px-5 py-3 dark:border-ink-800 dark:bg-brand-500/5">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">
+            <Sparkles className="h-3 w-3" /> Live summary
+          </div>
+          <p className="mt-1 text-sm leading-relaxed text-ink-700 dark:text-ink-200">{liveSummary.headline}</p>
+          {liveSummary.keywords.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {liveSummary.keywords.map((k) => (
+                <span
+                  key={k}
+                  className="rounded-full bg-white px-2 py-0.5 text-[10.5px] font-medium text-brand-700 shadow-sm dark:bg-ink-800 dark:text-brand-300"
+                >
+                  {k}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="p-5">
         {text ? (
           <Textarea

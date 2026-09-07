@@ -12,7 +12,7 @@ interface AuthContextValue {
   isDemoMode: boolean
   clinician: ClinicianProfile
   loginWithCredentials: (email: string) => void
-  loginWithGoogle: () => void
+  loginWithGoogle: (email?: string) => void
   enterDemoMode: () => void
   logout: () => void
 }
@@ -56,8 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist({ isAuthenticated: true, isDemoMode: false, clinician: { ...defaultClinician, email } })
   }
 
-  const loginWithGoogle = () => {
-    persist({ isAuthenticated: true, isDemoMode: false, clinician: defaultClinician })
+  const loginWithGoogle = (email?: string) => {
+    persist({
+      isAuthenticated: true,
+      isDemoMode: false,
+      clinician: email ? { ...defaultClinician, email } : defaultClinician,
+    })
   }
 
   const enterDemoMode = () => {

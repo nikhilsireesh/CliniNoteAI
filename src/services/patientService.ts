@@ -25,3 +25,20 @@ export async function getPatientDetail(id: string): Promise<PatientDetail | unde
   if (res.status === 404) return undefined
   return asJson<PatientDetail>(res)
 }
+
+export interface NewPatientInput {
+  name: string
+  age: number
+  sex: PatientRecord['sex']
+  mrn: string
+  status: PatientRecord['status']
+}
+
+export async function createPatient(input: NewPatientInput): Promise<PatientRecord> {
+  const res = await fetch(`${API_BASE}/patients`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return asJson<PatientRecord>(res)
+}

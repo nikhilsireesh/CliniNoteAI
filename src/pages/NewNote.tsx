@@ -120,6 +120,13 @@ export function NewNote() {
     setElapsed(0)
     setTranscript('')
     setSelectedEncounterId(null)
+    // Clear any leftover demo-reveal target before re-arming isLive — otherwise, if a demo
+    // encounter was loaded earlier in this session, the typewriter effect would see isLive
+    // flip back to true and replay that stale demo text over the real transcript.
+    setDemoRevealTarget('')
+    // Marks the transcript as "in progress" for real microphone recording too (not just the
+    // demo typewriter reveal), so the live summary tracks actual speech as it's recognized.
+    setIsLive(true)
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000)
 
     if (isSpeechRecognitionSupported()) {
@@ -141,6 +148,7 @@ export function NewNote() {
     recognizerRef.current?.stop()
     if (timerRef.current) clearInterval(timerRef.current)
     setRecordingStatus('idle')
+    setIsLive(false)
 
     if (!transcript.trim()) {
       // No live transcript captured (unsupported browser, or recognizer produced nothing) —

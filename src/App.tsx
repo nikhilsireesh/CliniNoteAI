@@ -4,6 +4,7 @@ import { AppLayout } from './components/AppLayout'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { NewNote } from './pages/NewNote'
+import { NewPatient } from './pages/NewPatient'
 import { Notes } from './pages/Notes'
 import { ViewNote } from './pages/ViewNote'
 import { Patients } from './pages/Patients'
@@ -33,6 +34,7 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="new-note" element={<NewNote />} />
+        <Route path="new-patient" element={<NewPatient />} />
         <Route path="notes" element={<Notes />} />
         <Route path="notes/:noteId" element={<ViewNote />} />
         <Route path="patients" element={<Patients />} />
